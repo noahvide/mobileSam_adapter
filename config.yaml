@@ -1,0 +1,33 @@
+task_name: cod  # cod, shadow, structure
+model_type: mobileSAM-adapter  # mobileSAM, mobileSAM-adapter, mobileSAM-LoRA
+
+dataset:
+  train_path: "data/train"
+  val_path: "data/val"
+  batch_size: 8
+  num_workers: 4
+  img_size: 1024
+
+training:
+  epochs: 50
+  lr: 1e-4
+  scheduler: cosine  # step, cosine, etc.
+  checkpoint_interval: 5
+  save_dir: "checkpoints/"
+
+loss:
+  # Task-specific weights
+  w_bce: 0.6
+  w_iou: 0.4
+  w_dice: 0.3
+  w_boundary: 0.2
+  pos_weight: 2.0  # for ShadowDetectionLoss
+
+adapter:
+  use_adapter: true
+  adapter_dim: 64
+
+lora:
+  use_lora: false
+  rank: 4
+  alpha: 16

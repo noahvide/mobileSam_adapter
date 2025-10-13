@@ -11,6 +11,7 @@ dependencies = [
     "mobile-sam",
     "numpy>=2.3.3",
     "opencv-python>=4.11.0.86",
+    "peft>=0.17.1",
     "timm>=1.0.19",
     "torch>=2.8.0",
     "torchvision>=0.23.0",
