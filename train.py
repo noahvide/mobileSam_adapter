@@ -29,37 +29,61 @@ from PIL import Image
 from torchvision import transforms
 import glob
 
+MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
 
 class SegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, task_name, split="train", img_size=224, transform=None, keep_original_size=False):
+    def __init__(self, task_name, split="train", target_size=1024, transform=None, keep_original_size=False):
         self.img_paths = sorted(glob.glob(f"./data/{task_name}/{split}/images/*"))
         self.mask_paths = sorted(glob.glob(f"./data/{task_name}/{split}/masks/*"))
         assert len(self.img_paths) == len(self.mask_paths), "Images and masks mismatch!"
-        self.img_size = img_size
+        
+        self.target_size = target_size
         self.transform = transform
         self.keep_original_size = keep_original_size
 
-        self.tf_image = transforms.Compose([
-            transforms.Resize((img_size, img_size)) if not keep_original_size else transforms.Lambda(lambda x: x),
-            transforms.ToTensor()
-        ])
-        self.tf_mask = transforms.Compose([
-            transforms.Resize((img_size, img_size)) if not keep_original_size else transforms.Lambda(lambda x: x),
-            transforms.ToTensor()
-        ])
+        self.to_tensor = transforms.ToTensor()
 
     def __len__(self):
         return len(self.img_paths)
 
+    def _resize_and_pad(self, img):
+        """Resize image to fit inside target_size, pad remaining areas to get exact target_size."""
+        w, h = img.size
+        scale = self.target_size / max(w, h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        img_resized = img.resize((new_w, new_h), resample=Image.BILINEAR)
+
+        # Create new padded image
+        new_img = Image.new("RGB", (self.target_size, self.target_size))
+        pad_left = (self.target_size - new_w) // 2
+        pad_top = (self.target_size - new_h) // 2
+        new_img.paste(img_resized, (pad_left, pad_top))
+        return new_img
+
+    def _resize_and_pad_mask(self, mask):
+        w, h = mask.size
+        scale = self.target_size / max(w, h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        mask_resized = mask.resize((new_w, new_h), resample=Image.NEAREST)
+
+        new_mask = Image.new("L", (self.target_size, self.target_size))
+        pad_left = (self.target_size - new_w) // 2
+        pad_top = (self.target_size - new_h) // 2
+        new_mask.paste(mask_resized, (pad_left, pad_top))
+        return new_mask
+
     def __getitem__(self, idx):
         img = Image.open(self.img_paths[idx]).convert("RGB")
         mask = Image.open(self.mask_paths[idx]).convert("L")
+        orig_size = (img.height, img.width)
 
-        orig_size = (img.height, img.width)  # (H, W)
+        if not self.keep_original_size:
+            img = self._resize_and_pad(img)
+            mask = self._resize_and_pad_mask(mask)
 
-        img = self.tf_image(img)
-        mask = self.tf_mask(mask)
-        mask = (mask > 0.5).float()
+        img = self.to_tensor(img)
+        mask = self.to_tensor(mask)
+        mask = (mask > 0.5).float()  # binarize
 
         if self.keep_original_size:
             return {"image": img, "mask": mask, "original_size": orig_size}
@@ -152,37 +176,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
     return running_loss / len(dataloader)
 
 
-# @torch.no_grad()
-# def validate(model, dataloader, criterion, device):
-#     model.eval()
-#     val_loss = 0.0
 
-#     for sample in tqdm(dataloader, desc="Validation", leave=False):
-#         # Extract image and mask
-#         img = sample["image"][0].to(device)  # take out the batch dim
-#         print(f"{img.shape = }")
-#         mask = sample["mask"][0].to(device)
-#         print(f"{mask.shape = }")
-#         orig_size = sample["original_size"][0]
-
-#         batched_input = [{"image": img, "original_size": orig_size}]
-#         outputs = model(batched_input, multimask_output=False)
-
-#         # outputs[0]["masks"] may be (num_masks, H, W)
-#         output_mask = outputs[0]["masks"].unsqueeze(0).to(device)  # add batch dim: [1, num_masks, H, W]
-#         print(f"{output_mask.shape = }")
-        
-#         # Now interpolate to match the target mask size (H, W)
-#         output_mask_resized = torch.nn.functional.interpolate(
-#             output_mask, size=mask.shape[-2:], mode="bilinear", align_corners=False
-#         )
-
-#         # If your mask has 1 channel, maybe take only the first mask
-#         output_mask_resized = output_mask_resized[0, 0]  # remove batch & channel dims to match target mask
-
-#         val_loss += criterion(output_mask_resized, mask).item()
-
-#     return val_loss / len(dataloader)
 @torch.no_grad()
 def validate(model, dataloader, criterion, device):
     model.eval()
@@ -240,11 +234,11 @@ def train_model(
 
     # Initialize model
     if variant == "base":
-        model = MobileSAMBase()
+        model = MobileSAMBase(pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
     elif variant == "adapter":
-        model = MobileSAMAdapter()
+        model = MobileSAMAdapter(pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
     elif variant == "lora":
-        model = MobileSAMLoRA(rank=8, alpha=32)
+        model = MobileSAMLoRA(rank=8, alpha=32, pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
     else:
         raise ValueError("Invalid variant")
 
@@ -256,7 +250,7 @@ def train_model(
     # print(f"\n[INFO] Params: {trainable/1e6:.3f}M trainable / {total/1e6:.3f}M total\n")
 
     # Training
-    train_dataset = SegmentationDataset(task_name="cod", split="train", img_size=224, keep_original_size=False)
+    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024, keep_original_size=False)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     # Validation

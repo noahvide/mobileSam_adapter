@@ -335,10 +335,6 @@ class TinyViTBlock(nn.Module):
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
-        print(H)
-        print(W)
-        print(L)
-        print(x.shape)
         assert L == H * W, "input feature has wrong size"
         res_x = x
         if H == self.window_size and W == self.window_size:

@@ -1,19 +1,49 @@
+import torch
+
 from .mobileSam.mobile_sam.modeling import Sam, ImageEncoderViT, TinyViT, PromptEncoder, MaskDecoder
 from models.mobileSam.mobile_sam.modeling import TwoWayTransformer
 from models.mobileSam.mobile_sam.modeling.mask_decoder import MaskDecoder
 
-from adapters.mobilesam_adapter.image_encoder_with_adapter import ImageEncoderViTAdapter
+from adapters.mobilesam_adapter.image_encoder_with_adapter import TinyViTAdapter
 from adapters.lora.lora_module import apply_lora
 
 class MobileSAMBase(Sam):
-    def __init__(self, img_size=224, embed_dim=768, use_adapter=False, use_lora=False):
+    def __init__(self, 
+                 img_size=1024, 
+                 use_adapter=False, 
+                 use_lora=False,
+                 pretrained_checkpoint=None):
+        
         if use_adapter:
-            image_encoder = ImageEncoderViTAdapter(img_size=img_size, embed_dim=embed_dim)
-        elif use_lora:
-            image_encoder = ImageEncoderViT(img_size=img_size, embed_dim=embed_dim)
-            image_encoder = apply_lora(image_encoder)
+            image_encoder = TinyViTAdapter(img_size=img_size)
         else:
-            image_encoder = TinyViT(img_size=img_size)
+            image_encoder = TinyViT(
+                img_size=1024,
+                in_chans=3,
+                num_classes=1000,
+                embed_dims=[64, 128, 160, 320],
+                depths=[2,2,6,2],
+                num_heads=[2,4,5,10],
+                window_sizes=[7,7,14,7],
+                mlp_ratio=4.,
+                drop_rate=0.,
+                drop_path_rate=0.0
+            )        
+                
+        if use_lora:
+            image_encoder = apply_lora(image_encoder)
+
+
+        if pretrained_checkpoint is not None:
+            checkpoint = torch.load(pretrained_checkpoint, map_location="cpu")
+            # Checkpoint may be full model dict or only state_dict
+            if "state_dict" in checkpoint:
+                checkpoint = checkpoint["state_dict"]
+            image_encoder.load_state_dict({k.replace("image_encoder.", ""): v 
+                                            for k, v in checkpoint.items() 
+                                            if k.startswith("image_encoder.")}, strict=False)
+            print("[INFO] Pretrained weights loaded into image encoder.")
+
 
         prompt_encoder = PromptEncoder(
             embed_dim=256,
