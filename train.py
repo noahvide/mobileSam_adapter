@@ -227,7 +227,7 @@ def train_model(
     
     device = torch.device(device_str)
     if device_str == "cuda":
-        MOBILESAM_CHECPOINT_PATH = "./content/mobileSam_adapter/models/mobileSam/weights/mobile_sam.pt"
+        MOBILESAM_CHECPOINT_PATH = "./mobileSam_adapter/models/mobileSam/weights/mobile_sam.pt"
     else:
         MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
         
