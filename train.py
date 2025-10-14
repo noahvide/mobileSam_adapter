@@ -35,7 +35,6 @@ from PIL import Image
 from torchvision import transforms
 import glob
 
-MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
 
 class SegmentationDataset(torch.utils.data.Dataset):
     def __init__(self, task_name, split="train", target_size=1024, transform=None, keep_original_size=False):
@@ -221,10 +220,20 @@ def train_model(
     batch_size=2,
     scheduler_type="cosine",
     task_name="cod",
-    save_root="checkpoints"
+    save_root="checkpoints",
+    device_str="mps"
 ):
     save_root = save_root + "/" + variant + "/" + task_name
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps")
+    
+    device = torch.device(device_str)
+    if device_str == "cuda":
+        MOBILESAM_CHECPOINT_PATH = "./content/mobileSam_adapter/models/mobileSam/weights/mobile_sam.pt"
+    else:
+        MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
+        
+
+    
+    
     print(f"[INFO] Device: {device}")
     print(f"[INFO] Task: {task_name}")
     print(f"[INFO] Model: {variant}")
@@ -307,16 +316,14 @@ def train_model(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
+    parser.add_argument('--device', required=True, choices=["cuda", "mps", "cpu"])
     args = parser.parse_args()
 
 
     with open(args.config, 'r') as f:
         config : dict= yaml.load(f, Loader=yaml.FullLoader)
 
-    for key, item in config.items():
-        print(key, item, type(item))
-
-    train_model(**config)
+    train_model(**config, device_str=args.device)
     
     
     # train_model(
