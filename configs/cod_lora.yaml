@@ -1,0 +1,7 @@
+variant: lora
+num_epochs: 50
+lr: 0.001
+scheduler_type: cosine   
+task_name: cod
+batch_size: 4
+save_root: checkpoints

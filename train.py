@@ -3,6 +3,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+import yaml
+import argparse
 import os
 import time
 import csv
@@ -299,12 +301,26 @@ def train_model(
 
 
 if __name__ == "__main__":
-    train_model(
-        variant="lora",          # "base", "adapter", or "lora"
-        num_epochs=10,
-        lr=1e-3,
-        scheduler_type="cosine",    # or "step"
-        task_name="cod",            # "cod", "shadow", "structure"
-        batch_size=8,
-        save_root="checkpoints",
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', required=True)
+    args = parser.parse_args()
+
+
+    with open(args.config, 'r') as f:
+        config : dict= yaml.load(f, Loader=yaml.FullLoader)
+
+    for key, item in config.items():
+        print(key, item, type(item))
+
+    train_model(**config)
+    
+    
+    # train_model(
+    #     variant="lora",          # "base", "adapter", or "lora"
+    #     num_epochs=10,
+    #     lr=1e-3,
+    #     scheduler_type="cosine",    # or "step"
+    #     task_name="cod",            # "cod", "shadow", "structure"
+    #     batch_size=8,
+    #     save_root="checkpoints",
+    # )
