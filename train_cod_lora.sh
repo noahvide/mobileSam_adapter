@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --exclude=hendrixgpu19fl,hendrixgpu20fl
 #SBATCH --ntasks=1 --cpus-per-task=4 --mem=80000M
 #SBATCH -p gpu --gres=gpu:titanrtx:1
 #SBATCH --time=2-00:00:00
