@@ -12,6 +12,7 @@ hostname
 echo "Hostname: $(hostname)"
 echo "GPU IDs allocated:"
 echo "$CUDA_VISIBLE_DEVICES"
+nvidia-smi
 
 # Load the appropriate Python module
 echo "Loading Python module..."
