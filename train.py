@@ -230,7 +230,7 @@ def train_model(
         
 
     
-    
+    print(f"[INFO] {torch.cuda.is_available() = }")
     print(f"[INFO] Device: {device}")
     print(f"[INFO] Task: {task_name}")
     print(f"[INFO] Model: {variant}")

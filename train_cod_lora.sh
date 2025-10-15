@@ -12,7 +12,8 @@ hostname
 echo "Hostname: $(hostname)"
 echo "GPU IDs allocated:"
 echo "$CUDA_VISIBLE_DEVICES"
-nvidia-smi
+echo "$SLURM_JOB_GPUS"
+export CUDA_VISIBLE_DEVICES=$SLURM_JOB_GPUS
 
 # Load the appropriate Python module
 echo "Loading Python module..."
