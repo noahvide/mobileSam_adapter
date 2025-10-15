@@ -41,5 +41,5 @@ echo "Python packages installed."
 
 # Execute the Python script
 echo "Starting Python script..."
-python3 train.py --config ./configs/cod_lora --device cuda
+python3 train.py --config ./configs/cod_adapter.yaml --device cuda
 echo "Python script finished executing."
