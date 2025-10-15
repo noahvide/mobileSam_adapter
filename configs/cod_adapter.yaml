@@ -1,4 +1,4 @@
-variant: lora
+variant: adapter
 num_epochs: 30
 lr: 0.001
 scheduler_type: cosine   

@@ -226,10 +226,7 @@ def train_model(
     save_root = save_root + "/" + variant + "/" + task_name
     
     device = torch.device(device_str)
-    if device_str == "cuda":
-        MOBILESAM_CHECPOINT_PATH = "./mobileSam_adapter/models/mobileSam/weights/mobile_sam.pt"
-    else:
-        MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
+    MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
         
 
     
@@ -284,30 +281,39 @@ def train_model(
 
     scaler = torch.amp.GradScaler()
     best_val_loss = float("inf")
+    epochs_no_improve = 0
+    patience = 5  # stop if val loss does not improve for 5 epochs
 
     for epoch in range(num_epochs):
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
 
         train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        
-
         val_loss = validate(model, val_loader, criterion, device)
         
         scheduler.step()
-
         lr_now = scheduler.get_last_lr()[0]
+
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {lr_now:.6f}")
 
         # Log to CSV
         log_metrics(log_path, epoch+1, train_loss, val_loss, lr_now)
 
-        # Checkpointing
+        # Check for improvement
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            epochs_no_improve = 0
             save_checkpoint(model, optimizer, epoch + 1, val_loss, save_dir, best=True)
+        else:
+            epochs_no_improve += 1
 
+        # Save regular checkpoint every 5 epochs
         if (epoch + 1) % 5 == 0:
             save_checkpoint(model, optimizer, epoch + 1, val_loss, save_dir)
+
+        # Early stopping
+        if epochs_no_improve >= patience:
+            print(f"\nEarly stopping triggered! Validation loss has not improved for {patience} epochs.")
+            break
 
     print(f"\nTraining complete! Logs saved at: {log_path}")
     print(f"Best validation loss: {best_val_loss:.4f}")
