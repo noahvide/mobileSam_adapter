@@ -3,9 +3,9 @@
 #SBATCH --ntasks=1 --cpus-per-task=4 --mem=80000M
 # we run on the gpu partition and we allocate 1 gpu
 #SBATCH -p gpu --gres=gpu:titanrtx:1
-# We expect that our program should not run longer than 10 days
+# We expect that our program should not run longer than 2 days
 # Note that a program will be killed once it exceeds this time!
-#SBATCH --time=10-00:00:00
+#SBATCH --time=2-00:00:00
 
 # Print the hostname and the IDs of the chosen GPUs.
 hostname
