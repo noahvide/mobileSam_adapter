@@ -1,47 +1,64 @@
 #!/bin/bash
-# normal cpu stuff: allocate cpus, memory
 #SBATCH --ntasks=1 --cpus-per-task=4 --mem=80000M
-# we run on the gpu partition and we allocate 1 gpu
 #SBATCH -p gpu --gres=gpu:titanrtx:1
-# We expect that our program should not run longer than 2 days
-# Note that a program will be killed once it exceeds this time!
 #SBATCH --time=2-00:00:00
 
-# Print the hostname and the IDs of the chosen GPUs.
+echo "================= JOB START ================="
 hostname
 echo "Hostname: $(hostname)"
-echo "GPU IDs allocated:"
-echo "$CUDA_VISIBLE_DEVICES"
-echo "$SLURM_JOB_GPUS"
+
+echo
+echo "===== SLURM GPU ENVIRONMENT ====="
+echo "SLURM_JOB_GPUS: $SLURM_JOB_GPUS"
+echo "SLURM_STEP_GPUS: $SLURM_STEP_GPUS"
+echo "CUDA_VISIBLE_DEVICES (before export): $CUDA_VISIBLE_DEVICES"
+
+# Export CUDA_VISIBLE_DEVICES to the GPU SLURM assigned
 export CUDA_VISIBLE_DEVICES=$SLURM_JOB_GPUS
+echo "CUDA_VISIBLE_DEVICES (after export): $CUDA_VISIBLE_DEVICES"
 
-# Load the appropriate Python module
-echo "Loading Python module..."
+echo
+echo "===== NVIDIA SYSTEM INFO ====="
+nvidia-smi
+
+echo
+echo "===== PYTHON / VENV SETUP ====="
 module load python/3.11.3
-echo "Python module loaded."
+echo "Python module loaded: $(python3 --version)"
 
-# Remove any existing virtual environment
-echo "Removing existing virtual environment..."
 rm -rf $TMPDIR/myenv
-echo "Existing virtual environment removed."
+echo "Old virtual environment removed."
 
-# Create a Python virtual environment in the job's temporary directory
-echo "Creating Python virtual environment..."
 python3 -m venv $TMPDIR/myenv
 echo "Virtual environment created."
 
-# Activate the virtual environment
-echo "Activating the virtual environment..."
 source $TMPDIR/myenv/bin/activate
 echo "Virtual environment activated."
+echo "Python executable: $(which python3)"
 
-# Install required Python packages from requirements.txt
-echo "Installing Python packages..."
+echo
+echo "===== PIP INFO ====="
+pip --version
 pip install --upgrade pip setuptools wheel -q
 pip install -r requirements.txt -q
 echo "Python packages installed."
+pip list
 
-# Execute the Python script
-echo "Starting Python script..."
+echo
+echo "===== PYTORCH GPU CHECK ====="
+python3 - <<EOF
+import torch
+print("PyTorch version:", torch.__version__)
+print("PyTorch built with CUDA:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    for i in range(torch.cuda.device_count()):
+        print(f"Device {i} name:", torch.cuda.get_device_name(i))
+        print(f"Device {i} capability:", torch.cuda.get_device_capability(i))
+EOF
+
+echo
+echo "===== START TRAINING ====="
 python3 train.py --config ./configs/cod_lora.yaml --device cuda
 echo "Python script finished executing."
+echo "================= JOB END ================="
