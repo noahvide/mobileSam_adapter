@@ -1,5 +1,4 @@
 #!/bin/bash
-#SBATCH --exclude=hendrixgpu19fl,hendrixgpu20fl
 #SBATCH --ntasks=1 --cpus-per-task=4 --mem=80000M
 #SBATCH -p gpu --gres=gpu:titanx:1
 #SBATCH --time=2-00:00:00
@@ -20,6 +19,7 @@ nvidia-smi
 
 echo
 echo "===== PYTHON / VENV SETUP ====="
+module unload python
 module load python/3.10.18
 echo "Python module loaded: $(python3 --version)"
 
