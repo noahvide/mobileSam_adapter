@@ -81,6 +81,7 @@ class MobileSAMBase(Sam):
         # ------------------------------
         # 6. Logging
         # ------------------------------
+        print("[INFO] Params before adding adapters:")
         self._log_params()
 
     # ------------------------------------------------------------------
