@@ -85,9 +85,8 @@ sympy==1.14.0
 timm==1.0.19
 tokenizers==0.22.1
 tomlkit==0.13.3
---extra-index-url https://download.pytorch.org/whl/cu128
-torch==2.8.0
-torchvision==0.23.0
+torch==2.3.1+cu117 --index-url https://download.pytorch.org/whl/cu117
+torchvision==0.14.1+cu117 --index-url https://download.pytorch.org/whl/cu117
 
 tornado==6.5.2
 tqdm==4.67.1
