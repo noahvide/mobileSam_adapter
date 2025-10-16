@@ -1,3 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cu117
+torch==2.4.1+cu117
+torchvision==0.15.2+cu117
+
 appnope==0.1.4
 asttokens==3.0.0
 certifi==2025.10.5
@@ -43,8 +47,6 @@ six==1.17.0
 stack-data==0.6.3
 sympy==1.14.0
 timm==1.0.20
-torch==2.4.1+cu117 --index-url https://download.pytorch.org/whl/cu117
-torchvision==0.15.2+cu117 --index-url https://download.pytorch.org/whl/cu117
 tornado==6.5.2
 tqdm==4.67.1
 traitlets==5.14.3
