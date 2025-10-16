@@ -7,6 +7,7 @@ class MobileSAMLoRA(MobileSAMBase):
     """
     def __init__(self, rank=4, alpha=16, **kwargs):
         # Pass LoRA parameters through kwargs for flexibility
-        super().__init__(use_lora=True, **kwargs)
+        super().__init__(**kwargs)
         self.rank = rank
         self.alpha = alpha
+        self.add_lora(r=self.rank, alpha=self.alpha)
