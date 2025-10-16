@@ -20,7 +20,7 @@ nvidia-smi
 
 echo
 echo "===== PYTHON / VENV SETUP ====="
-module load python/3.11.3
+module load python/3.10
 echo "Python module loaded: $(python3 --version)"
 
 rm -rf $TMPDIR/myenv
