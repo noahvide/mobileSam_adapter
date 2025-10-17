@@ -148,26 +148,26 @@ def get_loss_function(task_name, **kwargs):
 #     return total, trainable
 
 
-def save_checkpoint(model, optimizer, epoch, val_loss, save_dir, best=False):
+def save_checkpoint(model, optimizer, epoch, val_iou, save_dir, best=False):
     ckpt_name = f"best_model.pth" if best else f"checkpoint_epoch{epoch}.pth"
     path = os.path.join(save_dir, ckpt_name)
     torch.save({
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
-        "val_loss": val_loss
+        "val_iou": val_iou
     }, path)
     print(f"Saved checkpoint: {path}")
 
 
-def log_metrics(log_path, epoch, train_loss, val_loss, lr):
-    header = ["epoch", "train_loss", "val_loss", "lr"]
+def log_metrics(log_path, epoch, train_loss, val_iou, lr):
+    header = ["epoch", "train_loss", "val_iou", "lr"]
     file_exists = os.path.exists(log_path)
     with open(log_path, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow(header)
-        writer.writerow([epoch, train_loss, val_loss, lr])
+        writer.writerow([epoch, train_loss, val_iou, lr])
 
 
 # -----------------------------
@@ -219,7 +219,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
 @torch.no_grad()
 def validate(model, dataloader, criterion, device):
     model.eval()
-    val_loss = 0.0
+    val_iou = 0.0
 
     for sample in tqdm(dataloader, desc="Validation", leave=False):
         # sample is a dict: {"image": img, "mask": mask, "original_size": (H,W)}
@@ -234,17 +234,11 @@ def validate(model, dataloader, criterion, device):
 
         output_mask = outputs[0]["masks"]
 
-        # # Resize to match mask
-        # output_mask_resized = torch.nn.functional.interpolate(
-        #     output_mask, size=mask.shape[-2:], mode="bilinear", align_corners=False
-        # )
-
         # squeeze batch & channel dims to match mask
-        val_l = batch_iou(torch.sigmoid(output_mask), mask.unsqueeze(0)).item()
-        print(val_l)
-        val_loss += val_l  # mask[0] -> [H,W]
+        val_i = batch_iou(torch.sigmoid(output_mask), mask.unsqueeze(0)).item()
+        val_iou += val_i  # mask[0] -> [H,W]
     
-    return val_loss / len(dataloader)
+    return val_iou / len(dataloader)
 
 # -----------------------------
 # Main training loop
@@ -328,7 +322,6 @@ def train_model(
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
 
         train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        train_loss = 1.0
         val_iou = validate(model, val_loader, criterion, device)
         scheduler.step()
         lr_now = scheduler.get_last_lr()[0]
