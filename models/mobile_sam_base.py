@@ -12,7 +12,7 @@ class MobileSAMBase(Sam):
                  img_size=1024,
                  pretrained_checkpoint=None):
         
-        super().__init__(image_encoder=None, prompt_encoder=None, mask_decoder=None)
+        super().__init__(image_encoder=None, prompt_encoder=None, mask_decoder=None, pixel_mean=[123.675, 116.28, 103.53], pixel_std=[58.395, 57.12, 57.375])
 
         # ------------------------------
         # 1. Initialize TinyViT (matches checkpoint)
@@ -27,7 +27,11 @@ class MobileSAMBase(Sam):
             window_sizes=[7, 7, 14, 7],
             mlp_ratio=4.0,
             drop_rate=0.0,
-            drop_path_rate=0.0
+            drop_path_rate=0.0,
+            use_checkpoint=False,
+            mbconv_expand_ratio=4.0,
+            local_conv_size=3,
+            layer_lr_decay=0.8
         )
 
         # ------------------------------
@@ -35,25 +39,25 @@ class MobileSAMBase(Sam):
         # ------------------------------
         self.prompt_encoder = PromptEncoder(
             embed_dim=256,
-            input_image_size=img_size,
-            image_embedding_size=(img_size // 16, img_size // 16),
-            mask_in_chans=16,  # matches checkpoint
-        )
-
-        transformer = TwoWayTransformer(
-            depth=2,
-            embedding_dim=256,
-            mlp_dim=2048,
-            num_heads=8,
+            image_embedding_size=(64, 64),
+            input_image_size=(img_size, img_size),
+            mask_in_chans=16,
         )
 
         self.mask_decoder = MaskDecoder(
-            transformer=transformer,
-            transformer_dim=256,
             num_multimask_outputs=3,
+            transformer=TwoWayTransformer(
+                depth=2,
+                embedding_dim=256,
+                mlp_dim=2048,
+                num_heads=8,
+            ),
+            transformer_dim=256,
             iou_head_depth=3,
             iou_head_hidden_dim=256,
         )
+        
+
 
         self.image_encoder = self.image_encoder
         self.prompt_encoder = self.prompt_encoder

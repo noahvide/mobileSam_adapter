@@ -36,6 +36,40 @@ from torchvision import transforms
 import glob
 
 
+def batch_iou(preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
+    """
+    Compute the Intersection over Union (IoU) for a batch of predictions and targets.
+
+    IoU is a common evaluation metric for semantic segmentation tasks which measures the overlap
+    between two boundaries. It's defined as the area of the intersection divided by the area of the union.
+
+    Args:
+    preds (torch.Tensor): The predicted segmentations with shape [batch_size, 1, height, width].
+    targets (torch.Tensor): The ground truth segmentations with the same shape as predictions.
+    threshold (float): A threshold value to convert the predicted probabilities into a binary mask.
+
+    Returns:
+    torch.Tensor: A tensor of IoU values for each pair in the batch with shape [batch_size, 1].
+    """
+    
+    # Binarize predictions based on the threshold. Convert to float for subsequent calculations.
+    preds = (preds >= threshold).float()
+    
+    # Compute the intersection by element-wise multiplication of predictions and targets,
+    # followed by summing over the spatial dimensions (height and width).
+    intersection = (preds * targets).sum((2, 3))
+    
+    # Compute the union by summing predictions and targets separately, followed by summing over
+    # spatial dimensions and then subtracting the intersection to avoid double counting.
+    union = preds.sum((2, 3)) + targets.sum((2, 3)) - intersection
+    
+    # Calculate IoU by dividing intersection by union. Adding a small epsilon (1e-6) to avoid
+    # division by zero errors.
+    iou = intersection / (union + 1e-6)
+    
+    # Return the computed IoU values for the batch.
+    return iou
+
 class SegmentationDataset(torch.utils.data.Dataset):
     def __init__(self, task_name, split="train", target_size=1024, transform=None, keep_original_size=False):
         self.img_paths = sorted(glob.glob(f"./data/{task_name}/{split}/images/*"))
@@ -198,16 +232,18 @@ def validate(model, dataloader, criterion, device):
         batched_input = [{"image": img, "original_size": orig_size}]
         outputs = model(batched_input, multimask_output=False)
 
-        output_mask = outputs[0]["masks"].float()
+        output_mask = outputs[0]["masks"]
 
-        # Resize to match mask
-        output_mask_resized = torch.nn.functional.interpolate(
-            output_mask, size=mask.shape[-2:], mode="bilinear", align_corners=False
-        )
+        # # Resize to match mask
+        # output_mask_resized = torch.nn.functional.interpolate(
+        #     output_mask, size=mask.shape[-2:], mode="bilinear", align_corners=False
+        # )
 
         # squeeze batch & channel dims to match mask
-        val_loss += criterion(output_mask_resized, mask.unsqueeze(0)).item()  # mask[0] -> [H,W]
-        
+        val_l = batch_iou(torch.sigmoid(output_mask), mask.unsqueeze(0)).item()
+        print(val_l)
+        val_loss += val_l  # mask[0] -> [H,W]
+    
     return val_loss / len(dataloader)
 
 # -----------------------------
@@ -280,7 +316,7 @@ def train_model(
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
     scaler = torch.amp.GradScaler()
-    best_val_loss = float("inf")
+    best_val_iou = 0
     epochs_no_improve = 0
     patience = 5  # stop if val loss does not improve for 5 epochs
 
@@ -288,35 +324,35 @@ def train_model(
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
 
         train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        val_loss = validate(model, val_loader, criterion, device)
-        
+        train_loss = 1.0
+        val_iou = validate(model, val_loader, criterion, device)
         scheduler.step()
         lr_now = scheduler.get_last_lr()[0]
 
-        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {lr_now:.6f}")
+        print(f"Train Loss: {train_loss:.4f} | Val IoU: {val_iou:.4f} | LR: {lr_now:.6f}")
 
         # Log to CSV
-        log_metrics(log_path, epoch+1, train_loss, val_loss, lr_now)
+        log_metrics(log_path, epoch+1, train_loss, val_iou, lr_now)
 
         # Check for improvement
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if val_iou > best_val_iou:
+            best_val_iou = val_iou
             epochs_no_improve = 0
-            save_checkpoint(model, optimizer, epoch + 1, val_loss, save_dir, best=True)
+            save_checkpoint(model, optimizer, epoch + 1, val_iou, save_dir, best=True)
         else:
             epochs_no_improve += 1
 
         # Save regular checkpoint every 5 epochs
         if (epoch + 1) % 5 == 0:
-            save_checkpoint(model, optimizer, epoch + 1, val_loss, save_dir)
+            save_checkpoint(model, optimizer, epoch + 1, val_iou, save_dir)
 
         # Early stopping
         if epochs_no_improve >= patience:
-            print(f"\nEarly stopping triggered! Validation loss has not improved for {patience} epochs.")
+            print(f"\nEarly stopping triggered! Validation IoU has not improved for {patience} epochs.")
             break
 
     print(f"\nTraining complete! Logs saved at: {log_path}")
-    print(f"Best validation loss: {best_val_loss:.4f}")
+    print(f"Best validation IoU: {best_val_iou:.4f}")
 
 
 if __name__ == "__main__":
