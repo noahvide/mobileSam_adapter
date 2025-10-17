@@ -315,10 +315,14 @@ def train_model(
     else:
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-    scaler = torch.amp.GradScaler()
+    try:
+        scaler = torch.amp.GradScaler()
+    except AttributeError:
+        from torch.cuda.amp import GradScaler
+        scaler = GradScaler()    
     best_val_iou = 0
     epochs_no_improve = 0
-    patience = 5  # stop if val loss does not improve for 5 epochs
+    patience = 5  # stop if val IoU does not improve for 5 epochs
 
     for epoch in range(num_epochs):
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
