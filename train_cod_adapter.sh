@@ -10,7 +10,6 @@ echo "Hostname: $(hostname)"
 echo
 echo "===== SLURM GPU ENVIRONMENT ====="
 echo "SLURM_JOB_GPUS: $SLURM_JOB_GPUS"
-echo "SLURM_STEP_GPUS: $SLURM_STEP_GPUS"
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 
 echo
@@ -53,10 +52,6 @@ if torch.cuda.is_available():
         print(f"Device {i} name:", torch.cuda.get_device_name(i))
         print(f"Device {i} capability:", torch.cuda.get_device_capability(i))
 EOF
-
-echo
-echo "===== NVIDIA SYSTEM INFO ====="
-nvidia-smi
 
 echo
 echo "===== START TRAINING ====="

@@ -53,8 +53,9 @@ if torch.cuda.is_available():
         print(f"Device {i} capability:", torch.cuda.get_device_capability(i))
 EOF
 
+
 echo
 echo "===== START TRAINING ====="
-python3 train.py --config ./configs/cod_lora.yaml --device cuda
+python3 train.py --config ./configs/cod_adapter_lora.yaml --device cuda
 echo "Python script finished executing."
 echo "================= JOB END ================="
