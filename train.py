@@ -224,8 +224,8 @@ def validate(model, dataloader, criterion, device):
     val_iou = 0.0
 
     for sample in tqdm(dataloader, desc="Validation", leave=False):
-        img = sample["image"].to(device)    # no [0]
-        mask = sample["mask"].to(device)    # [1,H,W]
+        img = sample["image"][0].to(device)
+        mask = sample["mask"][0].to(device)
         orig_size = sample["original_size"]
 
         batched_input = [{"image": img, "original_size": orig_size}]
