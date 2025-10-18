@@ -282,8 +282,11 @@ def train_model(
     print(f"[INFO] Task: {task_name}")
     print(f"[INFO] Adapters: {', '.join(variants)}")
     print(f"[INFO] Schdeuler: {scheduler_type}")
+    print(f"[INFO] Learning Rate: {lr}")
     print(f"[INFO] Batch size: {batch_size}")
     print(f"[INFO] Number of epochs: {num_epochs}\n")
+    start_time = time.time()
+    print(f"[INFO] Start Time: {start_time}\n")
     
     # Timestamped save dir
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -372,6 +375,11 @@ def train_model(
 
     print(f"\nTraining complete! Logs saved at: {log_path}")
     print(f"Best validation Loss: {best_val_loss:.4f}")
+    end_time = time.time()
+
+    print(f"[INFO] End Time: {end_time}\n")
+    print(f"[INFO] Total Time: {(end_time - start_time)/(60*60):.1f}h")
+
 
 
 if __name__ == "__main__":
