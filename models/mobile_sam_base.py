@@ -91,9 +91,12 @@ class MobileSAMBase(Sam):
     # ------------------------------------------------------------------
     # Add SAM-Adapter
     # ------------------------------------------------------------------
-    def add_adapter(self, adapter_class=PromptGenerator, **kwargs):
+    def add_adapter(self, adapter_class=PromptGenerator, 
+            embed_dim=256,
+            scale_factor=4,
+            freq_nums=0.25, **kwargs):
         """Attach a SAM-Adapter prompt to the pretrained image encoder."""
-        self.adapter = adapter_class(**kwargs)
+        self.adapter = adapter_class(embed_dim=embed_dim, scale_factor=scale_factor, freq_nums=freq_nums, **kwargs)
 
         # Modify forward_features to inject adapter
         old_forward = self.image_encoder.forward_features

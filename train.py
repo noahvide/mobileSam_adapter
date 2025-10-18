@@ -261,7 +261,7 @@ def validate(model, dataloader, criterion, device):
 # Main training loop
 # -----------------------------
 def train_model(
-    variant="adapter",
+    variants=["adapter"],
     num_epochs=10,
     lr=1e-4,
     batch_size=2,
@@ -270,7 +270,7 @@ def train_model(
     save_root="checkpoints",
     device_str="mps"
 ):
-    save_root = save_root + "/" + variant + "/" + task_name
+    save_root = f"{save_root}/{"_".join(variants)}/{task_name}"
     
     device = torch.device(device_str)
     MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
@@ -280,7 +280,7 @@ def train_model(
     print(f"[INFO] {torch.cuda.is_available() = }")
     print(f"[INFO] Device: {device}")
     print(f"[INFO] Task: {task_name}")
-    print(f"[INFO] Model: {variant}")
+    print(f"[INFO] Adapters: {", ".join(variants)}")
     print(f"[INFO] Schdeuler: {scheduler_type}")
     print(f"[INFO] Batch size: {batch_size}")
     print(f"[INFO] Number of epochs: {num_epochs}\n")
@@ -292,14 +292,19 @@ def train_model(
     log_path = os.path.join(save_dir, "training_log.csv")
 
     # Initialize model
-    if variant == "base":
-        model = MobileSAMBase(pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
-    elif variant == "adapter":
-        model = MobileSAMAdapter(pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
-    elif variant == "lora":
-        model = MobileSAMLoRA(rank=8, alpha=32, pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
-    else:
-        raise ValueError("Invalid variant")
+    model = MobileSAMBase(pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
+    
+    for variant in variants: 
+        if variant == "base":
+            break
+        elif variant == "adapter":
+            model.add_adapter()
+            # model = MobileSAMAdapter()
+        elif variant == "lora":
+            model.add_lora(r=8, alpha=32)
+            # model = MobileSAMLoRA(rank=8, alpha=32, pretrained_checkpoint=MOBILESAM_CHECPOINT_PATH)
+        else:
+            raise ValueError("Invalid variant")
 
     model.to(device)
     # for name, param in model.named_parameters():
