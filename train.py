@@ -148,26 +148,27 @@ def get_loss_function(task_name, **kwargs):
 #     return total, trainable
 
 
-def save_checkpoint(model, optimizer, epoch, val_iou, save_dir, best=False):
+def save_checkpoint(model, optimizer, epoch, val_loss, val_iou, save_dir, best=False):
     ckpt_name = f"best_model.pth" if best else f"checkpoint_epoch{epoch}.pth"
     path = os.path.join(save_dir, ckpt_name)
     torch.save({
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
+        "val_loss": val_loss,
         "val_iou": val_iou
     }, path)
     print(f"Saved checkpoint: {path}")
 
 
-def log_metrics(log_path, epoch, train_loss, val_iou, lr):
-    header = ["epoch", "train_loss", "val_iou", "lr"]
+def log_metrics(log_path, epoch, train_loss, val_loss, val_iou, lr):
+    header = ["epoch", "train_loss", "val_loss", "val_iou", "lr"]
     file_exists = os.path.exists(log_path)
     with open(log_path, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow(header)
-        writer.writerow([epoch, train_loss, val_iou, lr])
+        writer.writerow([epoch, train_loss, val_loss, val_iou, lr])
 
 
 # -----------------------------
@@ -219,26 +220,27 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
 @torch.no_grad()
 def validate(model, dataloader, criterion, device):
     model.eval()
+    val_loss = 0.0
     val_iou = 0.0
 
     for sample in tqdm(dataloader, desc="Validation", leave=False):
-        # sample is a dict: {"image": img, "mask": mask, "original_size": (H,W)}
-        img = sample["image"][0].to(device)    # [C,H,W]
-        mask = sample["mask"][0].to(device)    # [1,H,W]
-
+        img = sample["image"].to(device)    # no [0]
+        mask = sample["mask"].to(device)    # [1,H,W]
         orig_size = sample["original_size"]
 
-        # Wrap image in a list for model input
         batched_input = [{"image": img, "original_size": orig_size}]
         outputs = model(batched_input, multimask_output=False)
 
-        output_mask = outputs[0]["masks"]
+        preds = outputs[0]["low_res_logits"]   # use same as training
+        preds = F.interpolate(preds, size=mask.shape[-2:], mode="bilinear", align_corners=False)
 
-        # squeeze batch & channel dims to match mask
-        val_i = batch_iou(torch.sigmoid(output_mask), mask.unsqueeze(0)).item()
-        val_iou += val_i  # mask[0] -> [H,W]
-    
-    return val_iou / len(dataloader)
+        loss = criterion(preds, mask.unsqueeze(0))
+        val_loss += loss.item()
+
+        val_i = batch_iou(torch.sigmoid(preds), mask.unsqueeze(0)).mean().item()
+        val_iou += val_i
+
+    return val_loss / len(dataloader), val_iou / len(dataloader)
 
 # -----------------------------
 # Main training loop
@@ -314,7 +316,7 @@ def train_model(
     except AttributeError:
         from torch.cuda.amp import GradScaler
         scaler = GradScaler()    
-    best_val_iou = 0
+    best_val_loss = torch.inf()
     epochs_no_improve = 0
     patience = 5  # stop if val IoU does not improve for 5 epochs
 
@@ -322,26 +324,26 @@ def train_model(
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
 
         train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device, scaler)
-        val_iou = validate(model, val_loader, criterion, device)
+        val_loss, val_iou = validate(model, val_loader, criterion, device)
         scheduler.step()
         lr_now = scheduler.get_last_lr()[0]
 
-        print(f"Train Loss: {train_loss:.4f} | Val IoU: {val_iou:.4f} | LR: {lr_now:.6f}")
-
+        print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val IoU: {val_iou:.4f}")
+        
         # Log to CSV
-        log_metrics(log_path, epoch+1, train_loss, val_iou, lr_now)
+        log_metrics(log_path, epoch+1, train_loss, val_loss, val_iou, lr_now)
 
         # Check for improvement
-        if val_iou > best_val_iou:
-            best_val_iou = val_iou
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             epochs_no_improve = 0
-            save_checkpoint(model, optimizer, epoch + 1, val_iou, save_dir, best=True)
+            save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir, best=True)
         else:
             epochs_no_improve += 1
 
         # Save regular checkpoint every 5 epochs
         if (epoch + 1) % 5 == 0:
-            save_checkpoint(model, optimizer, epoch + 1, val_iou, save_dir)
+            save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir)
 
         # Early stopping
         if epochs_no_improve >= patience:
@@ -349,7 +351,7 @@ def train_model(
             break
 
     print(f"\nTraining complete! Logs saved at: {log_path}")
-    print(f"Best validation IoU: {best_val_iou:.4f}")
+    print(f"Best validation Loss: {best_val_loss:.4f}")
 
 
 if __name__ == "__main__":
