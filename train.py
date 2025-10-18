@@ -223,21 +223,36 @@ def validate(model, dataloader, criterion, device):
     val_loss = 0.0
     val_iou = 0.0
 
-    for sample in tqdm(dataloader, desc="Validation", leave=False):
-        img = sample["image"][0].to(device)
-        mask = sample["mask"][0].to(device)
-        orig_size = sample["original_size"]
+    for images, masks in tqdm(dataloader, desc="Validation", leave=False):
+        images, masks = images.to(device), masks.to(device)
+        masks = masks.float()
 
-        batched_input = [{"image": img, "original_size": orig_size}]
+        batched_input = [
+            {
+                "image": img,
+                "original_size": (m.shape[1], m.shape[2])  # same as training
+            }
+            for img, m in zip(images, masks)
+        ]
+
         outputs = model(batched_input, multimask_output=False)
 
-        preds = outputs[0]["low_res_logits"]   # use same as training
-        preds = F.interpolate(preds, size=mask.shape[-2:], mode="bilinear", align_corners=False)
+        # Stack low-res logits: [B, 1, 1, H, W] -> [B, 1, H, W]
+        preds = torch.stack([out["low_res_logits"] for out in outputs], dim=0)  # stack along batch
+        preds = preds.float()  # safe, won't detach            
+        preds = preds.squeeze(2)  # remove singleton channel dim
 
-        loss = criterion(preds, mask.unsqueeze(0))
+        # Resize to match mask if needed
+        if preds.shape[-2:] != masks.shape[-2:]:
+            preds = F.interpolate(preds, size=masks.shape[-2:], mode="bilinear", align_corners=False)
+
+        preds = preds.float()  # ensure float32
+        
+        loss = criterion(preds, masks)
         val_loss += loss.item()
-
-        val_i = batch_iou(torch.sigmoid(preds), mask.unsqueeze(0)).mean().item()
+        
+        # Compute IoU
+        val_i = batch_iou(torch.sigmoid(preds), masks).mean().item()
         val_iou += val_i
 
     return val_loss / len(dataloader), val_iou / len(dataloader)
@@ -298,8 +313,8 @@ def train_model(
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     # Validation
-    val_dataset = SegmentationDataset(task_name="cod", split="val", keep_original_size=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=False)
+    val_dataset = SegmentationDataset(task_name="cod", split="val", keep_original_size=False)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Loss function
     criterion = get_loss_function(task_name=task_name)
@@ -318,7 +333,7 @@ def train_model(
         scaler = GradScaler()    
     best_val_loss = torch.inf
     epochs_no_improve = 0
-    patience = 5  # stop if val IoU does not improve for 5 epochs
+    patience = 10  # stop if val loss does not improve for 5 epochs
 
     for epoch in range(num_epochs):
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
@@ -347,7 +362,7 @@ def train_model(
 
         # Early stopping
         if epochs_no_improve >= patience:
-            print(f"\nEarly stopping triggered! Validation IoU has not improved for {patience} epochs.")
+            print(f"\nEarly stopping triggered! Validation Loss has not improved for {patience} epochs.")
             break
 
     print(f"\nTraining complete! Logs saved at: {log_path}")
