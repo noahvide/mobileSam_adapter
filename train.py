@@ -270,7 +270,7 @@ def train_model(
     save_root="checkpoints",
     device_str="mps"
 ):
-    save_root = f"{save_root}/{"_".join(variants)}/{task_name}"
+    save_root = f"{save_root}/{'_'.join(variants)}/{task_name}"
     
     device = torch.device(device_str)
     MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
@@ -280,7 +280,7 @@ def train_model(
     print(f"[INFO] {torch.cuda.is_available() = }")
     print(f"[INFO] Device: {device}")
     print(f"[INFO] Task: {task_name}")
-    print(f"[INFO] Adapters: {", ".join(variants)}")
+    print(f"[INFO] Adapters: {', '.join(variants)}")
     print(f"[INFO] Schdeuler: {scheduler_type}")
     print(f"[INFO] Batch size: {batch_size}")
     print(f"[INFO] Number of epochs: {num_epochs}\n")
