@@ -316,7 +316,7 @@ def train_model(
     except AttributeError:
         from torch.cuda.amp import GradScaler
         scaler = GradScaler()    
-    best_val_loss = torch.inf()
+    best_val_loss = torch.inf
     epochs_no_improve = 0
     patience = 5  # stop if val IoU does not improve for 5 epochs
 
