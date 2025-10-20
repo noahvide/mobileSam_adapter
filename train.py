@@ -341,7 +341,7 @@ def train_model(
         scaler = GradScaler()    
     best_val_loss = torch.inf
     epochs_no_improve = 0
-    patience = 10  # stop if val loss does not improve for 5 epochs
+    patience = 30  # stop if val loss does not improve for 5 epochs
 
     for epoch in range(num_epochs):
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
@@ -364,14 +364,12 @@ def train_model(
         else:
             epochs_no_improve += 1
 
-        # Save regular checkpoint every 5 epochs
-        if (epoch + 1) % 5 == 0:
-            save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir)
-
         # Early stopping
         if epochs_no_improve >= patience:
             print(f"\nEarly stopping triggered! Validation Loss has not improved for {patience} epochs.")
             break
+        
+    save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir)
 
     print(f"\nTraining complete! Logs saved at: {log_path}")
     print(f"Best validation Loss: {best_val_loss:.4f}")
