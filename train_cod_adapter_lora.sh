@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --ntasks=1 --cpus-per-task=4 --mem=80000M
-#SBATCH -p gpu --gres=gpu:titanrtx:1
+#SBATCH -p gpu --gres=gpu:1
 #SBATCH --time=2-00:00:00
 
 echo "================= JOB START ================="
@@ -19,7 +19,7 @@ nvidia-smi
 echo
 echo "===== PYTHON / VENV SETUP ====="
 module unload python
-module load python/3.11.3
+module load python/3.10.18
 echo "Python module loaded: $(python3 --version)"
 
 rm -rf $TMPDIR/myenv
