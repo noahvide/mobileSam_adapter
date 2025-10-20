@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --ntasks=1 --cpus-per-task=4 --mem=80000M
-#SBATCH -p gpu --gres=gpu:A100:1
+#SBATCH -p gpu --gres=gpu:a100:1
 #SBATCH --time=2-00:00:00
 
 echo "================= JOB START ================="
