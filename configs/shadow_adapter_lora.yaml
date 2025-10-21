@@ -1,6 +1,6 @@
 variants: [adapter, lora]
 num_epochs: 200
-lr: 0.001
+lr: 0.0001
 scheduler_type: cosine   
 task_name: shadow
 batch_size: 4
