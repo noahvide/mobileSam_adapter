@@ -69,30 +69,31 @@ def batch_iou(preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5
     
     # Return the computed IoU values for the batch.
     return iou
-
 class SegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, task_name, split="train", target_size=1024, transform=None, keep_original_size=False):
+    def __init__(self, task_name, split="train", target_size=1024, transform=None, use_orig_normalization=False):
         self.img_paths = sorted(glob.glob(f"./data/{task_name}/{split}/images/*"))
         self.mask_paths = sorted(glob.glob(f"./data/{task_name}/{split}/masks/*"))
         assert len(self.img_paths) == len(self.mask_paths), "Images and masks mismatch!"
         
         self.target_size = target_size
         self.transform = transform
-        self.keep_original_size = keep_original_size
+        self.use_orig_normalization = use_orig_normalization
 
         self.to_tensor = transforms.ToTensor()
+
+        # SAM / MobileSAM pretrained normalization
+        self.pixel_mean = torch.tensor([123.675, 116.28, 103.53]).view(3, 1, 1)
+        self.pixel_std  = torch.tensor([58.395, 57.12, 57.375]).view(3, 1, 1)
 
     def __len__(self):
         return len(self.img_paths)
 
     def _resize_and_pad(self, img):
-        """Resize image to fit inside target_size, pad remaining areas to get exact target_size."""
         w, h = img.size
         scale = self.target_size / max(w, h)
         new_w, new_h = int(w * scale), int(h * scale)
         img_resized = img.resize((new_w, new_h), resample=Image.BILINEAR)
 
-        # Create new padded image
         new_img = Image.new("RGB", (self.target_size, self.target_size))
         pad_left = (self.target_size - new_w) // 2
         pad_top = (self.target_size - new_h) // 2
@@ -114,20 +115,38 @@ class SegmentationDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img = Image.open(self.img_paths[idx]).convert("RGB")
         mask = Image.open(self.mask_paths[idx]).convert("L")
-        orig_size = (img.height, img.width)
+        orig_size = (img.height, img.width)  # true original size
 
-        if not self.keep_original_size:
-            img = self._resize_and_pad(img)
-            mask = self._resize_and_pad_mask(mask)
+        img = self._resize_and_pad(img)
+        mask = self._resize_and_pad_mask(mask)
 
-        img = self.to_tensor(img)
-        mask = self.to_tensor(mask)
-        mask = (mask > 0.5).float()  # binarize
-
-        if self.keep_original_size:
-            return {"image": img, "mask": mask, "original_size": orig_size}
+        # Convert image to tensor
+        if self.use_orig_normalization:
+            img = transforms.ToTensor()(img) * 255.0
+            img = (img - self.pixel_mean.to(img.device)) / self.pixel_std.to(img.device)
         else:
-            return img, mask
+            img = self.to_tensor(img)
+
+        # Convert mask to tensor and binarize
+        mask = self.to_tensor(mask)
+        mask = (mask > 0.5).float()
+
+        return img, mask, orig_size
+
+    # def __getitem__(self, idx):
+    #     img = Image.open(self.img_paths[idx]).convert("RGB")
+    #     mask = Image.open(self.mask_paths[idx]).convert("L")
+
+    #     img = self._resize_and_pad(img)
+    #     mask = self._resize_and_pad_mask(mask)
+
+    #     # Convert image to float tensor scaled [0,255]
+    #     img = transforms.ToTensor()(img) * 255.0
+
+    #     mask = transforms.ToTensor()(mask)
+    #     mask = (mask > 0.5).float()
+
+    #     return img, mask
 
 def get_loss_function(task_name, **kwargs):
     if task_name == "cod":
@@ -178,7 +197,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
     model.train()
     running_loss = 0.0
 
-    for images, masks in tqdm(dataloader, desc="Training", leave=False):
+    for images, masks, orig_sizes in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
         masks = masks.float()  # ensure float
 
@@ -187,9 +206,9 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
         batched_input = [
             {
                 "image": img, 
-                "original_size": (mask.shape[1], mask.shape[2])
+                "original_size": orig_size
             }
-            for img, mask in zip(images, masks)
+            for img, orig_size in zip(images, orig_sizes)
         ]
 
         with torch.amp.autocast(device_type=device.type):
@@ -223,16 +242,16 @@ def validate(model, dataloader, criterion, device):
     val_loss = 0.0
     val_iou = 0.0
 
-    for images, masks in tqdm(dataloader, desc="Validation", leave=False):
+    for images, masks, orig_sizes in tqdm(dataloader, desc="Validation", leave=False):
         images, masks = images.to(device), masks.to(device)
         masks = masks.float()
 
         batched_input = [
             {
                 "image": img,
-                "original_size": (m.shape[1], m.shape[2])  # same as training
+                "original_size": orig_size
             }
-            for img, m in zip(images, masks)
+            for img, orig_size in zip(images, orig_sizes)
         ]
 
         outputs = model(batched_input, multimask_output=False)
@@ -317,11 +336,11 @@ def train_model(
     # print(f"\n[INFO] Params: {trainable/1e6:.3f}M trainable / {total/1e6:.3f}M total\n")
 
     # Training
-    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024, keep_original_size=False)
+    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     # Validation
-    val_dataset = SegmentationDataset(task_name="cod", split="val", keep_original_size=False)
+    val_dataset = SegmentationDataset(task_name="cod", split="val")
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Loss function
