@@ -204,6 +204,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
 
     for images, masks, orig_sizes in tqdm(dataloader, desc="Training", leave=False):
         images, masks = images.to(device), masks.to(device)
+        orig_sizes = [o for o in zip(orig_sizes[0], orig_sizes[1])]
         masks = masks.float()  # ensure float
 
         optimizer.zero_grad()
@@ -211,7 +212,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
         batched_input = [
             {
                 "image": img, 
-                "original_size": orig_size
+                "original_size": (int(orig_size[0]), int(orig_size[1]))            
             }
             for img, orig_size in zip(images, orig_sizes)
         ]
@@ -249,12 +250,13 @@ def validate(model, dataloader, criterion, device):
 
     for images, masks, orig_sizes in tqdm(dataloader, desc="Validation", leave=False):
         images, masks = images.to(device), masks.to(device)
+        orig_sizes = [o for o in zip(orig_sizes[0], orig_sizes[1])]
         masks = masks.float()
 
         batched_input = [
             {
                 "image": img,
-                "original_size": orig_size
+                "original_size": (int(orig_size[0]), int(orig_size[1]))
             }
             for img, orig_size in zip(images, orig_sizes)
         ]
