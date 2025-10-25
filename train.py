@@ -167,8 +167,13 @@ def get_loss_function(task_name, **kwargs):
 #     return total, trainable
 
 
-def save_checkpoint(model, optimizer, epoch, val_loss, val_iou, save_dir, best=False):
-    ckpt_name = f"best_model.pth" if best else f"checkpoint_epoch{epoch}.pth"
+def save_checkpoint(model, optimizer, epoch, val_loss, val_iou, save_dir, best_loss=False, best_iou=False):
+    if best_loss:
+        ckpt_name = f"best_loss_model.pth"
+    elif best_iou:
+        ckpt_name = f"best_iou_model.pth"
+    else:
+        f"checkpoint_epoch{epoch}.pth"
     path = os.path.join(save_dir, ckpt_name)
     torch.save({
         "epoch": epoch,
@@ -359,6 +364,7 @@ def train_model(
         from torch.cuda.amp import GradScaler
         scaler = GradScaler()    
     best_val_loss = torch.inf
+    best_val_iou = 0
     epochs_no_improve = 0
     patience = 30  # stop if val loss does not improve for 5 epochs
 
@@ -379,10 +385,14 @@ def train_model(
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_no_improve = 0
-            save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir, best=True)
+            save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir, best_loss=True)
         else:
             epochs_no_improve += 1
 
+        if val_iou > best_val_iou:
+            best_val_iou = val_iou
+            save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir, best_iou=True)
+            
         # Early stopping
         if epochs_no_improve >= patience:
             print(f"\nEarly stopping triggered! Validation Loss has not improved for {patience} epochs.")
