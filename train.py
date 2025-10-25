@@ -336,11 +336,11 @@ def train_model(
     # print(f"\n[INFO] Params: {trainable/1e6:.3f}M trainable / {total/1e6:.3f}M total\n")
 
     # Training
-    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024)
+    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024, use_orig_normalization=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     # Validation
-    val_dataset = SegmentationDataset(task_name="cod", split="val")
+    val_dataset = SegmentationDataset(task_name="cod", split="val", target_size=1024, use_orig_normalization=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Loss function
