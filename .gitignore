@@ -16,5 +16,8 @@ wheels/
 
 data/
 checkpoints/
+checkpoints_old/
+*.csv
+*.zip
 *.pth
 

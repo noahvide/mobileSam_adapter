@@ -17,13 +17,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
+from scipy.ndimage import distance_transform_edt
+import numpy as np
 
 from tqdm import tqdm
 
 
 from models.mobile_sam_base import MobileSAMBase
-from models.mobile_sam_adapter import MobileSAMAdapter
-from models.mobile_sam_lora import MobileSAMLoRA
 
 from losses import (
     CamouflagedObjectLoss,
@@ -69,8 +69,29 @@ def batch_iou(preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5
     
     # Return the computed IoU values for the batch.
     return iou
+
+def get_point_from_mask(mask_tensor: torch.Tensor):
+    """Return center point of mask, projected to nearest foreground pixel if outside."""
+    mask_np = mask_tensor.squeeze().cpu().numpy() > 0.5
+    if mask_np.sum() == 0:
+        return None
+
+    ys, xs = np.where(mask_np)
+    y_center = ys.mean()
+    x_center = xs.mean()
+
+    # check if center is inside mask
+    y_c, x_c = int(round(y_center)), int(round(x_center))
+    if mask_np[y_c, x_c]:
+        return torch.tensor([[x_center, y_center]], dtype=torch.float32)
+
+    # if not, project to nearest mask pixel using distance transform
+    dist, indices = distance_transform_edt(~mask_np, return_indices=True)
+    nearest_y, nearest_x = indices[:, y_c, x_c]
+    return torch.tensor([[nearest_x, nearest_y]], dtype=torch.float32)
+
 class SegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, task_name, split="train", target_size=1024, transform=None, use_orig_normalization=False):
+    def __init__(self, task_name, split="train", target_size=1024, transform=None, use_orig_normalization=False, use_prompt=True):
         self.img_paths = sorted(glob.glob(f"./data/{task_name}/{split}/images/*"))
         self.mask_paths = sorted(glob.glob(f"./data/{task_name}/{split}/masks/*"))
         assert len(self.img_paths) == len(self.mask_paths), "Images and masks mismatch!"
@@ -78,7 +99,8 @@ class SegmentationDataset(torch.utils.data.Dataset):
         self.target_size = target_size
         self.transform = transform
         self.use_orig_normalization = use_orig_normalization
-
+        self.use_prompt = use_prompt
+        
         self.to_tensor = transforms.ToTensor()
 
         # SAM / MobileSAM pretrained normalization
@@ -119,7 +141,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
         img = self._resize_and_pad(img)
         mask = self._resize_and_pad_mask(mask)
-
+        
         # Convert image to tensor
         if self.use_orig_normalization:
             img = transforms.ToTensor()(img) * 255.0
@@ -130,8 +152,26 @@ class SegmentationDataset(torch.utils.data.Dataset):
         # Convert mask to tensor and binarize
         mask = self.to_tensor(mask)
         mask = (mask > 0.5).float()
-
-        return img, mask, orig_size
+        
+        point_coords = None
+        point_labels = None
+        if self.use_prompt:
+            point_coords = get_point_from_mask(mask)
+            point_coords = point_coords.unsqueeze(1)
+            # print(point_coords.shape)
+            point_labels = torch.ones(point_coords.shape[:2]) 
+        
+        # print(f"{idx = }")
+        # print(f"{point_coords = }")
+        # print(f"{point_labels = }")
+        if point_coords is not None and point_labels is not None:
+            # print("yoo")
+            return {"image": img, "mask": mask, "original_size": orig_size, "point_coords": point_coords, "point_labels": point_labels}
+        else:
+            # print("yaya")
+            # print({"image": img, "mask": mask, "original_size": orig_size})
+            return {"image": img, "mask": mask, "original_size": orig_size}
+            
 
     # def __getitem__(self, idx):
     #     img = Image.open(self.img_paths[idx]).convert("RGB")
@@ -173,7 +213,7 @@ def save_checkpoint(model, optimizer, epoch, val_loss, val_iou, save_dir, best_l
     elif best_iou:
         ckpt_name = f"best_iou_model.pth"
     else:
-        f"checkpoint_epoch{epoch}.pth"
+        ckpt_name = f"checkpoint_epoch{epoch}.pth"
     path = os.path.join(save_dir, ckpt_name)
     torch.save({
         "epoch": epoch,
@@ -202,21 +242,42 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, scaler):
     model.train()
     running_loss = 0.0
 
-    for images, masks, orig_sizes in tqdm(dataloader, desc="Training", leave=False):
+    for data_dict in tqdm(dataloader, desc="Training", leave=False):
+        images = data_dict["image"]
+        masks = data_dict["mask"]
+        orig_sizes = data_dict["original_size"]
+        use_prompt = "point_coords" in data_dict
+        if use_prompt:
+            point_coords = data_dict["point_coords"].to(device)
+            point_labels = data_dict["point_labels"].to(device)
+        
         images, masks = images.to(device), masks.to(device)
         orig_sizes = [o for o in zip(orig_sizes[0], orig_sizes[1])]
         masks = masks.float()  # ensure float
 
         optimizer.zero_grad()
 
-        batched_input = [
-            {
-                "image": img, 
-                "original_size": (int(orig_size[0]), int(orig_size[1]))            
-            }
-            for img, orig_size in zip(images, orig_sizes)
-        ]
+        if use_prompt:
+            batched_input = [
+                {
+                    "image": img, 
+                    "original_size": (int(orig_size[0]), int(orig_size[1])),
+                    "point_coords": point_coord,
+                    "point_labels": point_label            
+                }
+                for img, orig_size, point_coord, point_label in zip(images, orig_sizes, point_coords, point_labels)
+            ]
+        else:
+            batched_input = [
+                {
+                    "image": img, 
+                    "original_size": (int(orig_size[0]), int(orig_size[1]))            
+                }
+                for img, orig_size in zip(images, orig_sizes)
+            ]
 
+        # print(batched_input)
+        
         with torch.amp.autocast(device_type=device.type):
             outputs = model(batched_input, multimask_output=False)
 
@@ -248,18 +309,38 @@ def validate(model, dataloader, criterion, device):
     val_loss = 0.0
     val_iou = 0.0
 
-    for images, masks, orig_sizes in tqdm(dataloader, desc="Validation", leave=False):
+    for data_dict in tqdm(dataloader, desc="Validation", leave=False):
+        images = data_dict["image"]
+        masks = data_dict["mask"]
+        orig_sizes = data_dict["original_size"]
+        use_prompt = "point_coords" in data_dict
+        if use_prompt:
+            point_coords = data_dict["point_coords"].to(device)
+            point_labels = data_dict["point_labels"].to(device)
+        
         images, masks = images.to(device), masks.to(device)
         orig_sizes = [o for o in zip(orig_sizes[0], orig_sizes[1])]
-        masks = masks.float()
+        masks = masks.float()  # ensure float
 
-        batched_input = [
-            {
-                "image": img,
-                "original_size": (int(orig_size[0]), int(orig_size[1]))
-            }
-            for img, orig_size in zip(images, orig_sizes)
-        ]
+
+        if use_prompt:
+            batched_input = [
+                {
+                    "image": img, 
+                    "original_size": (int(orig_size[0]), int(orig_size[1])),
+                    "point_coords": point_coord,
+                    "point_labels": point_label            
+                }
+                for img, orig_size, point_coord, point_label in zip(images, orig_sizes, point_coords, point_labels)
+            ]
+        else:
+            batched_input = [
+                {
+                    "image": img, 
+                    "original_size": (int(orig_size[0]), int(orig_size[1]))            
+                }
+                for img, orig_size in zip(images, orig_sizes)
+            ]
 
         outputs = model(batched_input, multimask_output=False)
 
@@ -302,11 +383,12 @@ def train_model(
     MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
         
 
-    
+    use_prompt = True
     print(f"[INFO] {torch.cuda.is_available() = }")
     print(f"[INFO] Device: {device}")
     print(f"[INFO] Task: {task_name}")
     print(f"[INFO] Adapters: {', '.join(variants)}")
+    print(f"[INFO] Use point-prompt: {use_prompt}")
     print(f"[INFO] Schdeuler: {scheduler_type}")
     print(f"[INFO] Learning Rate: {lr}")
     print(f"[INFO] Batch size: {batch_size}")
@@ -343,11 +425,11 @@ def train_model(
     # print(f"\n[INFO] Params: {trainable/1e6:.3f}M trainable / {total/1e6:.3f}M total\n")
 
     # Training
-    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024, use_orig_normalization=True)
+    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024, use_orig_normalization=True, use_prompt=use_prompt)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     # Validation
-    val_dataset = SegmentationDataset(task_name="cod", split="val", target_size=1024, use_orig_normalization=True)
+    val_dataset = SegmentationDataset(task_name="cod", split="val", target_size=1024, use_orig_normalization=True, use_prompt=use_prompt)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Loss function
@@ -368,7 +450,7 @@ def train_model(
     best_val_loss = torch.inf
     best_val_iou = 0
     epochs_no_improve = 0
-    patience = 30  # stop if val loss does not improve for 5 epochs
+    patience = 30
 
     for epoch in range(num_epochs):
         print(f"\nEpoch [{epoch+1}/{num_epochs}]")
@@ -380,10 +462,8 @@ def train_model(
 
         print(f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val IoU: {val_iou:.4f}")
         
-        # Log to CSV
         log_metrics(log_path, epoch+1, train_loss, val_loss, val_iou, lr_now)
 
-        # Check for improvement
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_no_improve = 0
@@ -395,7 +475,6 @@ def train_model(
             best_val_iou = val_iou
             save_checkpoint(model, optimizer, epoch + 1, val_loss, val_iou, save_dir, best_iou=True)
             
-        # Early stopping
         if epochs_no_improve >= patience:
             print(f"\nEarly stopping triggered! Validation Loss has not improved for {patience} epochs.")
             break
