@@ -157,19 +157,12 @@ class SegmentationDataset(torch.utils.data.Dataset):
         point_labels = None
         if self.use_prompt:
             point_coords = get_point_from_mask(mask)
-            point_coords = point_coords.unsqueeze(1)
-            # print(point_coords.shape)
+            point_coords = point_coords.unsqueeze(0)
             point_labels = torch.ones(point_coords.shape[:2]) 
         
-        # print(f"{idx = }")
-        # print(f"{point_coords = }")
-        # print(f"{point_labels = }")
         if point_coords is not None and point_labels is not None:
-            # print("yoo")
             return {"image": img, "mask": mask, "original_size": orig_size, "point_coords": point_coords, "point_labels": point_labels}
         else:
-            # print("yaya")
-            # print({"image": img, "mask": mask, "original_size": orig_size})
             return {"image": img, "mask": mask, "original_size": orig_size}
             
 
@@ -354,7 +347,6 @@ def validate(model, dataloader, criterion, device):
             preds = F.interpolate(preds, size=masks.shape[-2:], mode="bilinear", align_corners=False)
 
         preds = preds.float()  # ensure float32
-        
         loss = criterion(preds, masks)
         val_loss += loss.item()
         
@@ -375,6 +367,7 @@ def train_model(
     scheduler_type="cosine",
     task_name="cod",
     save_root="checkpoints",
+    use_prompt=True,
     device_str="mps"
 ):
     save_root = f"{save_root}/{'_'.join(variants)}/{task_name}"
@@ -383,7 +376,6 @@ def train_model(
     MOBILESAM_CHECPOINT_PATH = "./models/mobileSam/weights/mobile_sam.pt"
         
 
-    use_prompt = True
     print(f"[INFO] {torch.cuda.is_available() = }")
     print(f"[INFO] Device: {device}")
     print(f"[INFO] Task: {task_name}")
@@ -425,11 +417,11 @@ def train_model(
     # print(f"\n[INFO] Params: {trainable/1e6:.3f}M trainable / {total/1e6:.3f}M total\n")
 
     # Training
-    train_dataset = SegmentationDataset(task_name="cod", split="train", target_size=1024, use_orig_normalization=True, use_prompt=use_prompt)
+    train_dataset = SegmentationDataset(task_name=task_name, split="train", target_size=1024, use_orig_normalization=True, use_prompt=use_prompt)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     # Validation
-    val_dataset = SegmentationDataset(task_name="cod", split="val", target_size=1024, use_orig_normalization=True, use_prompt=use_prompt)
+    val_dataset = SegmentationDataset(task_name=task_name, split="val", target_size=1024, use_orig_normalization=True, use_prompt=use_prompt)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Loss function

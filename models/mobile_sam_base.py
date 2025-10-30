@@ -113,7 +113,7 @@ class MobileSAMBase(Sam):
             if hasattr(self, 'adapter') and name.startswith('adapter'):
                 param.requires_grad = True
 
-        print("[INFO] Adapter attached. Adapter parameters are trainable.")
+        print("[INFO] Adapter attached.")
         self._log_params()
 
     # ------------------------------------------------------------------
@@ -129,7 +129,7 @@ class MobileSAMBase(Sam):
             if "lora_" in name:
                 param.requires_grad = True
 
-        print("[INFO] LoRA applied. LoRA parameters are trainable.")
+        print("[INFO] LoRA applied.")
         self._log_params()
 
     # ------------------------------------------------------------------
@@ -141,11 +141,11 @@ class MobileSAMBase(Sam):
         print(f"[INFO] Trainable params: {trainable_params/1e6:.3f}M")
         print(f"[INFO] Pretrained params: {self.pretrained_param_count/1e6:.3f}M")
         print(f"[INFO] Total params: {total_params/1e6:.3f}M")
-        diff = total_params - (self.pretrained_param_count + trainable_params)
-        if abs(diff) > 1e4:
-            print(f"[WARN] Some layers ({diff/1e6:.3f}M params) not covered by checkpoint — likely adapter or LoRA layers.")
-        else:
-            print("[INFO] Parameter count check passed.")
+        # diff = total_params - (self.pretrained_param_count + trainable_params)
+        # if abs(diff) > 1e4:
+        #     print(f"[WARN] Some layers ({diff/1e6:.3f}M params) not covered by checkpoint — likely adapter or LoRA layers.")
+        # else:
+        #     print("[INFO] Parameter count check passed.")
 
     # ------------------------------------------------------------------
     # Load checkpoint (robust)
