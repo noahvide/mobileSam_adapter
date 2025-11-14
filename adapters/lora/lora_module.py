@@ -27,7 +27,7 @@ class LoRALinear(nn.Module):
         return result + lora_update
     
 
-def apply_lora(model, target_keywords=("attn", "qkv", "proj"), r=8, alpha=16, dropout=0.05):
+def apply_lora(model, target_keywords=("attn", "qkv", "proj"), r=8, alpha=32, dropout=0.05):
     """
     Recursively replace Linear layers whose name matches `target_keywords` with LoRALinear.
     """
